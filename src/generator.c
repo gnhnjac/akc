@@ -10,6 +10,8 @@ char *assembly_code;
 
 size_t assembly_code_len = 0;
 
+size_t clause_counter = 0;
+
 void gen_init()
 {
 
@@ -34,88 +36,22 @@ void add_to_code(char *text)
 
 }
 
-void gen_assemble_move(expr_node *node, char *dst, op_type op)
+void add_to_code_fmt(char *fmt, ...)
 {
+
+	va_list valist;
+
+	va_start(valist, fmt);
 
 	char *text;
 
-	switch (node->type)
-	{
+	vasprintf(&text, fmt, valist);
 
-	case EXPR_CONST:
+	add_to_code(text);
 
-		switch(op)
-		{
+	free(text);
 
-		case OP_MOV_REG:
-			asprintf(&text, "mov %s, %ld\n", dst, ((expr_const *)node)->value);
-			break;
-		case OP_MOV_IMM:
-			asprintf(&text, "mov rbx, %ld\nmov [%s], rbx\n", ((expr_const *)node)->value, dst);
-			break;
-		default:
-			fprintf(stderr, "unknown op type %d, aborting\n",op);
-
-		}
-
-		add_to_code(text);
-
-		free(text);
-
-		break;
-
-	case EXPR_VAR:
-
-
-		switch(op)
-		{
-
-		case OP_MOV_REG:
-			asprintf(&text, "mov rbx, [%s]\nmov %s, rbx\n", ((expr_var *)node)->name, dst);
-			break;
-		case OP_MOV_IMM:
-			asprintf(&text, "mov rbx, [%s]\nmov [%s], rbx\n", ((expr_var *)node)->name, dst);
-			break;
-		default:
-			fprintf(stderr, "unknown op type %d, aborting\n",op);
-
-		}
-
-		add_to_code(text);
-
-		free(text);
-
-		break;
-
-	default:
-		fprintf(stderr, "unknown expression %d, aborting\n", node->type);
-		exit(1);
-
-	}
-
-}
-
-size_t type_to_size(data_type type)
-{
-
-	switch(type)
-	{
-
-	case DATA_CHAR:
-		return 1;
-
-	case DATA_WORD:
-		return 2;
-
-	case DATA_INT:
-		return 4;
-
-	case DATA_PTR: case DATA_LONG:
-		return 8;
-
-	}
-
-	return 0;
+	va_end(valist);
 
 }
 
@@ -137,31 +73,18 @@ void gen_assemble_global_data(expr_scope *scope)
 	for(int i = 0; i < scope->variables.idx; i++)
 	{
 
-		char *data_size;
+		add_to_code(variables[i].name);
+		add_to_code(": dq 0\n");
 
-		switch(type_to_size(variables[i].type))
-		{
+	}
 
-		case 1:
-			data_size = ": db 0\n";
-			break;
-		case 2:
-			data_size = ": dw 0\n";
-			break;
-		case 4:
-			data_size = ": dd 0\n";
-			break;
-		case 8:
-			data_size = ": dq 0\n";
-			break;
-		default:
-			fprintf(stderr, "unknown data type %d, aborting\n",variables[i].type);
-			exit(1);
+	variables = (variable *)scope->subscope_variables.data;
 
-		}
+	for(int i = 0; i < scope->subscope_variables.idx; i++)
+	{
 
 		add_to_code(variables[i].name);
-		add_to_code(data_size);
+		add_to_code(": dq 0\n");
 
 	}
 
@@ -171,6 +94,14 @@ static inline void gen_insert_variable(expr_scope *scope_node, variable v)
 {
 
 	vect_insert(&scope_node->variables,&v);
+
+	if (scope_node->type == EXPR_GLOBAL || scope_node->type == EXPR_FUNCSCOPE)
+		return;
+
+	while(scope_node->type != EXPR_GLOBAL && scope_node->type != EXPR_FUNCSCOPE)
+		scope_node = scope_node->parent;
+
+	vect_insert(&scope_node->subscope_variables,&v);
 
 }
 
@@ -212,10 +143,38 @@ char *gen_generate_assembly(expr_scope *global_node)
 void gen_assemble(expr_scope *scope, expr_node *node)
 {
 
+	if (!node)
+	{
+
+		fprintf(stderr, "received null node, aborting\n");
+		exit(1);
+
+	}
+
 	switch(node->type)
 	{
 
-	case EXPR_GLOBAL:
+	case EXPR_BRANCH:
+
+		gen_assemble(scope, ((expr_branch *)node)->condition);
+
+		size_t clause_number = clause_counter;
+
+		clause_counter++;
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\njz _else%d\n", clause_number);
+
+		gen_assemble(scope, (expr_node *)((expr_branch *)node)->if_body);
+
+		add_to_code_fmt("jmp _end%d\n_else%d:\n", clause_number, clause_number);
+
+		gen_assemble(scope, (expr_node *)((expr_branch *)node)->else_body);
+
+		add_to_code_fmt("_end%d:\n", clause_number);
+
+		break;
+
+	case EXPR_SUBSCOPE:
 
 		expr_node **items = ((expr_scope *)node)->body.data;
 
@@ -228,27 +187,33 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		}
 
+		break;
+
+	case EXPR_GLOBAL:
+
+		items = ((expr_scope *)node)->body.data;
+
+		items_sz = ((expr_scope *)node)->body.idx;
+
+		for(int i = 0; i < items_sz; i++)
+		{
+
+			gen_assemble((expr_scope *)node, items[i]);
+
+		}
+
 		gen_assemble_global_data((expr_scope *)node);
 
 		break;
 
-	case EXPR_ASSIGN:
+	case EXPR_DECL:
 
-		if (!gen_get_variable(scope, ((expr_assign *)node)->name).type)
+		if (!gen_get_variable(scope, ((expr_decl *)node)->name).name)
 		{
-
-			if (!((expr_assign *)node)->var_type)
-			{
-
-				fprintf(stderr, "variable %s is not declared, aborting\n",((expr_assign *)node)->name);
-				exit(1);
-
-			}
 
 			variable v;
 
-			v.type = ((expr_assign *)node)->var_type;
-			v.name = ((expr_assign *)node)->name; // already malloced...
+			v.name = ((expr_decl *)node)->name; // already malloced...
 
 			gen_insert_variable(scope, v);
 
@@ -256,23 +221,185 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		else
 		{
 
-			if (((expr_assign *)node)->var_type)
-			{
-
-				fprintf(stderr, "variable %s already declared, aborting\n",((expr_assign *)node)->name);
-				exit(1);
-
-			}
+			fprintf(stderr, "variable %s already declared, aborting\n",((expr_decl *)node)->name);
+			exit(1);
 
 		}
 
-		gen_assemble_move(((expr_assign *)node)->value, ((expr_assign *)node)->name, OP_MOV_IMM);
+		break;
+
+	case EXPR_ASSIGN:
+
+		if (!gen_get_variable(scope, ((expr_assign *)node)->name).name)
+		{
+
+			fprintf(stderr, "variable %s is not declared, aborting\n",((expr_assign *)node)->name);
+			exit(1);
+
+		}
+
+		gen_assemble(scope, ((expr_assign *)node)->value);
+
+		add_to_code_fmt("pop QWORD [%s]\n", ((expr_assign *)node)->name);
+
+		break;
+
+	case EXPR_CONST:
+
+		add_to_code_fmt("push %ld\n", ((expr_const *)node)->value);
+
+		break;
+
+	case EXPR_VAR:
+
+		if (!gen_get_variable(scope, ((expr_var *)node)->name).name)
+		{
+
+			fprintf(stderr, "variable %s is not declared, aborting\n",((expr_var *)node)->name);
+			exit(1);
+
+		}
+
+		add_to_code_fmt("push QWORD [%s]\n", ((expr_var *)node)->name);
+
+		break;
+
+	case EXPR_ADD:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code("pop rax\npop rdx\nadd rax, rdx\npush rax\n");
+
+		break;
+
+	case EXPR_BIGGER:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njg _bigger%d\npush 0\njmp _end%d\n_bigger%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		clause_counter++;
+
+		break;
+
+	case EXPR_SMALLER:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njl _smaller%d\npush 0\njmp _end%d\n_smaller%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		clause_counter++;
+
+		break;
+
+	case EXPR_EQUAL:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\nje _equal%d\npush 0\njmp _end%d\n_equal%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		clause_counter++;
+
+		break;
+
+	case EXPR_NEQUAL:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njne _nequal%d\npush 0\njmp _end%d\n_nequal%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		clause_counter++;
+
+		break;
+
+	case EXPR_NOT:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\nje _zero%d\npush 0\njmp _end%d\n_zero%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		clause_counter++;
+
+		break;
+
+	case EXPR_AND:
+
+		clause_number = clause_counter;
+
+		clause_counter++;
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\njne _firstequal%d\npush 0\njmp _end%d\n_firstequal%d:\n", clause_number, clause_number, clause_number);
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\njne _secondequal%d\npush 0\njmp _end%d\n_secondequal%d:\npush 1\n_end%d:\n", clause_number, clause_number, clause_number, clause_number);
+
+		break;
+
+	case EXPR_OR:
+
+		clause_number = clause_counter;
+
+		clause_counter++;
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\njne _equal%d\n", clause_number);
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code_fmt("pop rax\ncmp rax, 0\njne _equal%d\npush 0\njmp _end%d\n_equal%d:\npush 1\n_end%d:\n", clause_number, clause_number, clause_number, clause_number);
+
+		break;
+
+	case EXPR_SUB:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code("pop rdx\npop rax\nsub rax, rdx\npush rax\n");
+
+		break;
+
+	case EXPR_MULT:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code("pop rbx\npop rax\nmul rbx\npush rax\n");
+
+		break;
+
+	case EXPR_DIV:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code("pop rbx\npop rax\ndiv rbx\npush rax\n");
+
+		break;
+
+	case EXPR_MOD:
+
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
+		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
+
+		add_to_code("pop rbx\npop rax\ndiv rbx\npush rdx\n");
 
 		break;
 
 	case EXPR_EXIT:
 
-		gen_assemble_move(((expr_exit *)node)->exit_code, "rdi", OP_MOV_REG);
+		gen_assemble(scope, ((expr_exit *)node)->exit_code);
+
+		add_to_code("pop rdi\n");
 
 		add_to_code("mov rax, 60\nsyscall\n");
 

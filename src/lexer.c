@@ -17,6 +17,13 @@ static inline char lex_peek()
 
 }
 
+static inline char lex_peek_ahead(int ahead)
+{
+
+	return text[text_idx + ahead];
+
+}
+
 static inline char lex_consume()
 {
 
@@ -80,10 +87,22 @@ vector lex_tokenize()
 				type = TKN_EXIT;
 
 			}
-			else if (strncmp(&text[start_idx], "int", str_size) == 0)
+			else if (strncmp(&text[start_idx], "var", str_size) == 0)
 			{
 
-				type = TKN_INT;
+				type = TKN_VAR;
+
+			}
+			else if (strncmp(&text[start_idx], "if", str_size) == 0)
+			{
+
+				type = TKN_IF;
+
+			}
+			else if (strncmp(&text[start_idx], "else", str_size) == 0)
+			{
+
+				type = TKN_ELSE;
 
 			}
 
@@ -119,7 +138,74 @@ vector lex_tokenize()
 				add_token(TKN_SEMICOL,0,0);
 				break;
 			case '=':
-				add_token(TKN_EQUALS,0,0);
+				if (lex_peek_ahead(1) == '=')
+				{
+					lex_consume();
+					add_token(TKN_EQUAL,0,0);
+				}
+				else
+					add_token(TKN_EQUALS,0,0);
+				break;
+			case '(':
+				add_token(TKN_OPENPAREN,0,0);
+				break;
+			case ')':
+				add_token(TKN_CLOSEPAREN,0,0);
+				break;
+			case '{':
+				add_token(TKN_OPENBRACK,0,0);
+				break;
+			case '}':
+				add_token(TKN_CLOSEBRACK,0,0);
+				break;
+			case '+':
+				add_token(TKN_PLUS,0,0);
+				break;
+			case '-':
+				add_token(TKN_MINUS,0,0);
+				break;
+			case '*':
+				add_token(TKN_ASTERISK,0,0);
+				break;
+			case '/':
+				add_token(TKN_FORSLASH,0,0);
+				break;
+			case '%':
+				add_token(TKN_PERCENT,0,0);
+				break;
+			case '>':
+				add_token(TKN_BIGGER,0,0);
+				break;
+			case '<':
+				add_token(TKN_SMALLER,0,0);
+				break;
+			case '!':
+				if (lex_peek_ahead(1) == '=')
+				{
+					lex_consume();
+					add_token(TKN_NEQUAL,0,0);
+				}
+				else
+					add_token(TKN_EXCL,0,0);
+				break;
+			case '|':
+				if (lex_peek_ahead(1) == '|')
+				{
+					lex_consume();
+					add_token(TKN_OR,0,0);
+				}
+				else
+					add_token(TKN_PIPE,0,0);
+				break;
+
+			case '&':
+				if (lex_peek_ahead(1) == '&')
+				{
+					lex_consume();
+					add_token(TKN_AND,0,0);
+				}
+				else
+					add_token(TKN_AMPR,0,0);
 				break;
 			default:
 				fprintf(stderr, "unknown symbol %c, aborting\n", c);

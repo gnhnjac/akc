@@ -6,36 +6,31 @@ typedef enum
 {
 
 	EXPR_GLOBAL = 1,
-	EXPR_SCOPE,
+	EXPR_FUNCSCOPE,
+	EXPR_SUBSCOPE,
 	EXPR_DECL,
 	EXPR_ASSIGN,
 	EXPR_VAR,
 	EXPR_CONST,
 	EXPR_BRANCH,
-	EXPR_BINOP,
+	EXPR_ADD,
+	EXPR_SUB,
+	EXPR_MULT,
+	EXPR_DIV,
+	EXPR_MOD,
+	EXPR_NOT,
 	EXPR_EQUAL,
 	EXPR_NEQUAL,
 	EXPR_BIGGER,
 	EXPR_SMALLER,
+	EXPR_OR,
+	EXPR_AND,
 	EXPR_EXIT
 
 } expr_type;
 
-typedef enum
-{
-
-	DATA_INT = 1,
-	DATA_CHAR,
-	DATA_WORD,
-	DATA_LONG,
-	DATA_PTR
-
-} data_type;
-
 typedef struct
 {
-
-	data_type type;
 
 	char *name;
 
@@ -57,6 +52,8 @@ typedef struct _expr_scope
 
 	vector variables;
 
+	vector subscope_variables;
+
 	struct _expr_scope *parent;
 
 } expr_scope;
@@ -75,8 +72,6 @@ typedef struct
 
 	expr_type type;
 
-	data_type var_type;
-
 	char *name;
 
 } expr_decl;
@@ -85,8 +80,6 @@ typedef struct
 {
 
 	expr_type type;
-
-	data_type var_type;
 
 	char *name;
 
@@ -111,6 +104,39 @@ typedef struct
 	expr_node *exit_code;
 
 } expr_exit;
+
+typedef struct
+{
+
+	expr_type type;
+
+	expr_node *lhs;
+
+	expr_node *rhs;
+
+} expr_binop;
+
+typedef struct
+{
+
+	expr_type type;
+
+	expr_node *lhs;
+
+	expr_node *rhs;
+
+} expr_compare;
+
+typedef struct
+{
+
+	expr_type type;
+
+	expr_node *condition;
+	expr_scope *if_body;
+	expr_scope *else_body;
+
+} expr_branch;
 
 void parser_init(token *tkns, size_t token_count);
 expr_scope *parser_gen_ast();

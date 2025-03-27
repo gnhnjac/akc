@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "vector.h"
 
 void vect_init(vector *v, size_t data_size)
