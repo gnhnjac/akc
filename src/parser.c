@@ -55,10 +55,23 @@ static inline token parser_consume()
 static inline void parser_expect_scope(expr_node *parent)
 {
 
-	if (parent->type != EXPR_GLOBAL && parent->type != EXPR_FUNCSCOPE && parent->type != EXPR_SUBSCOPE)
+	if (parent->type != EXPR_SCOPE)
 	{
 
 		fprintf(stderr, "expected scope as parent, instead got %d, aborting\n", parent->type);
+		exit(1);
+
+	}
+
+}
+
+static inline void parser_expect_global(expr_node *parent)
+{
+
+	if (parent->type != EXPR_GLOBAL && parent->type != EXPR_SCOPE)
+	{
+
+		fprintf(stderr, "expected scope or global as parent, instead got %d, aborting\n", parent->type);
 		exit(1);
 
 	}
@@ -74,7 +87,6 @@ void parser_init(token *tkns, size_t token_count)
 
 	vect_init(&glob_node.body, sizeof(expr_node *));
 	vect_init(&glob_node.variables, sizeof(variable));
-	vect_init(&glob_node.subscope_variables, sizeof(variable));
 
 	tokens = tkns;
 	tkn_count = token_count;
@@ -243,6 +255,39 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			return parent;
 
+		case TKN_FUNC:
+			
+			parser_consume();
+
+			parser_peek_expect(TKN_IDENTIFIER);
+
+			expr_func *func_node = (expr_func *)malloc(sizeof(expr_func));
+
+			func_node->type = EXPR_FUNC;
+			func_node->name = strdup(parser_consume().value);
+
+			parser_consume_expect(TKN_OPENPAREN);
+			parser_consume_expect(TKN_CLOSEPAREN);
+
+			parser_consume_expect(TKN_OPENBRACK);
+
+			expr_scope *func_body = (expr_scope *)malloc(sizeof(expr_scope));
+
+			func_body->type = EXPR_SCOPE;
+			
+			vect_init(&func_body->body, sizeof(expr_node *));
+			vect_init(&func_body->variables, sizeof(variable));
+
+			func_body->parent = (expr_scope *)parent;
+
+			parser_parse_expr((expr_node *)func_body);
+
+			func_node->body = func_body;
+
+			vect_insert(&((expr_scope *)parent)->body, &func_node);
+
+			break;
+
 		case TKN_IF:
 
 			parser_expect_scope(parent);
@@ -260,7 +305,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			expr_scope *branch_body = (expr_scope *)malloc(sizeof(expr_scope));
 
-			branch_body->type = EXPR_SUBSCOPE;
+			branch_body->type = EXPR_SCOPE;
 			
 			vect_init(&branch_body->body, sizeof(expr_node *));
 			vect_init(&branch_body->variables, sizeof(variable));
@@ -277,7 +322,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			expr_scope *branch_else = (expr_scope *)malloc(sizeof(expr_scope));
 
-			branch_else->type = EXPR_SUBSCOPE;
+			branch_else->type = EXPR_SCOPE;
 			
 			vect_init(&branch_else->body, sizeof(expr_node *));
 			vect_init(&branch_else->variables, sizeof(variable));
@@ -311,40 +356,45 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 		case TKN_VAR:
 
-			parser_expect_scope(parent);
+			parser_expect_global(parent);
 
 			parser_consume();
 
 			parser_peek_expect(TKN_IDENTIFIER);
 
-			if(parser_peek_ahead(1).type == TKN_SEMICOL)
-			{
+			char *var_name = parser_consume().value;
 
-				char *var_name = parser_consume().value;
+			expr_decl *decl_node = (expr_decl *)malloc(sizeof(expr_decl));
+
+			decl_node->type = EXPR_DECL;
+			decl_node->name = strdup(var_name);
+
+			if(parser_peek().type == TKN_SEMICOL)
+			{
 
 				parser_consume(); // consume the semicol token
 
-				expr_decl *decl_node = (expr_decl *)malloc(sizeof(expr_decl));
-
-				decl_node->type = EXPR_DECL;
-				decl_node->name = strdup(var_name);
-
-				vect_insert(&((expr_scope *)parent)->body, &decl_node);
+				decl_node->value = 0;
 
 			}
 			else
 			{
 
-				fprintf(stderr, "expected token ';' got %d instead\n", parser_peek().type);
-				exit(1);
+				parser_consume_expect(TKN_EQUALS);
+
+				decl_node->value = parser_parse_expr(0);
+
+				parser_consume_expect(TKN_SEMICOL);
 
 			}
+
+			vect_insert(&((expr_scope *)parent)->body, &decl_node);
 
 			break;
 
 		case TKN_IDENTIFIER:
 
-			char *var_name = parser_consume().value;
+			var_name = parser_consume().value;
 
 			if (parser_peek().type == TKN_EQUALS)
 			{

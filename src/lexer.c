@@ -105,6 +105,12 @@ vector lex_tokenize()
 				type = TKN_ELSE;
 
 			}
+			else if (strncmp(&text[start_idx], "func", str_size) == 0)
+			{
+
+				type = TKN_FUNC;
+
+			}
 
 			if (type == TKN_IDENTIFIER)
 				add_token(type, &text[start_idx], str_size);
@@ -157,6 +163,9 @@ vector lex_tokenize()
 				break;
 			case '}':
 				add_token(TKN_CLOSEBRACK,0,0);
+				break;
+			case ',':
+				add_token(TKN_COMMA,0,0);
 				break;
 			case '+':
 				add_token(TKN_PLUS,0,0);

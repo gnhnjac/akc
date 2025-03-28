@@ -12,14 +12,18 @@ size_t assembly_code_len = 0;
 
 size_t clause_counter = 0;
 
+int rsp_off = 0;
+
 void gen_init()
 {
 
-	assembly_code_len = strlen("global _start\n\nsection .text\n_start:\n");
+	assembly_code_len = strlen("global _start\n\nsection .text\n_start:\ncall main\n");
 
 	assembly_code = (char *)malloc(assembly_code_len + 1);
 
-	strcpy(assembly_code, "global _start\n\nsection .text\n_start:\n");
+	strcpy(assembly_code, "global _start\n\nsection .text\n_start:\ncall main\n");
+
+	add_to_code("mov rdi, 0\nmov rax, 60\nsyscall\n"); // exit
 
 }
 
@@ -78,15 +82,10 @@ void gen_assemble_global_data(expr_scope *scope)
 
 	}
 
-	variables = (variable *)scope->subscope_variables.data;
+}
 
-	for(int i = 0; i < scope->subscope_variables.idx; i++)
-	{
-
-		add_to_code(variables[i].name);
-		add_to_code(": dq 0\n");
-
-	}
+void gen_exit_scope(expr_scope *scope)
+{
 
 }
 
@@ -94,14 +93,6 @@ static inline void gen_insert_variable(expr_scope *scope_node, variable v)
 {
 
 	vect_insert(&scope_node->variables,&v);
-
-	if (scope_node->type == EXPR_GLOBAL || scope_node->type == EXPR_FUNCSCOPE)
-		return;
-
-	while(scope_node->type != EXPR_GLOBAL && scope_node->type != EXPR_FUNCSCOPE)
-		scope_node = scope_node->parent;
-
-	vect_insert(&scope_node->subscope_variables,&v);
 
 }
 
@@ -154,6 +145,18 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 	switch(node->type)
 	{
 
+	case EXPR_FUNC:
+
+		add_to_code_fmt("%s:\npush rbp\nmov rbp, rsp\n", ((expr_func *)node)->name);
+
+		rsp_off = 0;
+
+		gen_assemble(scope, (expr_node *)((expr_func *)node)->body);
+
+		add_to_code("mov rsp, rbp\npop rbp\nret\n");
+
+		break;
+
 	case EXPR_BRANCH:
 
 		gen_assemble(scope, ((expr_branch *)node)->condition);
@@ -163,6 +166,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		clause_counter++;
 
 		add_to_code_fmt("pop rax\ncmp rax, 0\njz _else%d\n", clause_number);
+
+		rsp_off--; // pop
 
 		gen_assemble(scope, (expr_node *)((expr_branch *)node)->if_body);
 
@@ -174,7 +179,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		break;
 
-	case EXPR_SUBSCOPE:
+	case EXPR_SCOPE:
 
 		expr_node **items = ((expr_scope *)node)->body.data;
 
@@ -215,6 +220,35 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 			v.name = ((expr_decl *)node)->name; // already malloced...
 
+			if (scope->type == EXPR_SCOPE)
+			{
+
+				add_to_code("sub rsp, 8\n");
+
+				rsp_off += 8;
+
+				v.rbp_off = rsp_off;
+
+			}
+			else
+			{
+				v.rbp_off = 0;
+			}
+
+			if (((expr_decl *)node)->value)
+			{
+
+				gen_assemble(scope, ((expr_assign *)node)->value);
+
+				if(v.rbp_off)
+					add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+				else
+					add_to_code_fmt("pop QWORD [%s]\n", v.name);
+
+				rsp_off--; // pop
+				
+			}
+
 			gen_insert_variable(scope, v);
 
 		}
@@ -230,7 +264,9 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 	case EXPR_ASSIGN:
 
-		if (!gen_get_variable(scope, ((expr_assign *)node)->name).name)
+		variable v = gen_get_variable(scope, ((expr_assign *)node)->name);
+
+		if (!v.name)
 		{
 
 			fprintf(stderr, "variable %s is not declared, aborting\n",((expr_assign *)node)->name);
@@ -240,7 +276,12 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		gen_assemble(scope, ((expr_assign *)node)->value);
 
-		add_to_code_fmt("pop QWORD [%s]\n", ((expr_assign *)node)->name);
+		if(v.rbp_off)
+			add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+		else
+			add_to_code_fmt("pop QWORD [%s]\n", v.name);
+
+		rsp_off--; // pop
 
 		break;
 
@@ -248,11 +289,15 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("push %ld\n", ((expr_const *)node)->value);
 
+		rsp_off++; // push
+
 		break;
 
 	case EXPR_VAR:
 
-		if (!gen_get_variable(scope, ((expr_var *)node)->name).name)
+		v = gen_get_variable(scope, ((expr_var *)node)->name);
+
+		if (!v.name)
 		{
 
 			fprintf(stderr, "variable %s is not declared, aborting\n",((expr_var *)node)->name);
@@ -260,7 +305,12 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		}
 
-		add_to_code_fmt("push QWORD [%s]\n", ((expr_var *)node)->name);
+		if(v.rbp_off)
+			add_to_code_fmt("push QWORD [rbp-%d]\n", v.rbp_off);
+		else
+			add_to_code_fmt("push QWORD [%s]\n", v.name);
+
+		rsp_off++; // push
 
 		break;
 
@@ -271,6 +321,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code("pop rax\npop rdx\nadd rax, rdx\npush rax\n");
 
+		rsp_off--; // pop
+
 		break;
 
 	case EXPR_BIGGER:
@@ -279,6 +331,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
 		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njg _bigger%d\npush 0\njmp _end%d\n_bigger%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		rsp_off--; // pop, pop, push
 
 		clause_counter++;
 
@@ -291,6 +345,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njl _smaller%d\npush 0\njmp _end%d\n_smaller%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
 
+		rsp_off--; // pop, pop, push
+
 		clause_counter++;
 
 		break;
@@ -301,6 +357,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
 		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\nje _equal%d\npush 0\njmp _end%d\n_equal%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		rsp_off--; // pop, pop, push
 
 		clause_counter++;
 
@@ -313,6 +371,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("pop rdx\npop rax\ncmp rax, rdx\njne _nequal%d\npush 0\njmp _end%d\n_nequal%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
 
+		rsp_off--; // pop, pop, push
+
 		clause_counter++;
 
 		break;
@@ -322,6 +382,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
 
 		add_to_code_fmt("pop rax\ncmp rax, 0\nje _zero%d\npush 0\njmp _end%d\n_zero%d:\npush 1\n_end%d:\n", clause_counter, clause_counter, clause_counter, clause_counter);
+
+		// pop, push
 
 		clause_counter++;
 
@@ -341,6 +403,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("pop rax\ncmp rax, 0\njne _secondequal%d\npush 0\njmp _end%d\n_secondequal%d:\npush 1\n_end%d:\n", clause_number, clause_number, clause_number, clause_number);
 
+		// pop, push, pop, push
+
 		break;
 
 	case EXPR_OR:
@@ -357,6 +421,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("pop rax\ncmp rax, 0\njne _equal%d\npush 0\njmp _end%d\n_equal%d:\npush 1\n_end%d:\n", clause_number, clause_number, clause_number, clause_number);
 
+		// pop, push, pop, push
+
 		break;
 
 	case EXPR_SUB:
@@ -365,6 +431,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
 		add_to_code("pop rdx\npop rax\nsub rax, rdx\npush rax\n");
+
+		rsp_off--; // pop, pop, push
 
 		break;
 
@@ -375,6 +443,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code("pop rbx\npop rax\nmul rbx\npush rax\n");
 
+		rsp_off--; // pop, pop, push
+
 		break;
 
 	case EXPR_DIV:
@@ -383,6 +453,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
 		add_to_code("pop rbx\npop rax\ndiv rbx\npush rax\n");
+
+		rsp_off--; // pop, pop, push
 
 		break;
 
@@ -393,6 +465,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code("pop rbx\npop rax\ndiv rbx\npush rdx\n");
 
+		rsp_off--; // pop, pop, push
+
 		break;
 
 	case EXPR_EXIT:
@@ -400,6 +474,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, ((expr_exit *)node)->exit_code);
 
 		add_to_code("pop rdi\n");
+
+		rsp_off--; // pop
 
 		add_to_code("mov rax, 60\nsyscall\n");
 
