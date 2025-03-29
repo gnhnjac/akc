@@ -189,13 +189,61 @@ expr_type binop_tok_to_expr(tkn_type tok)
 
 }
 
+bool is_binop_tok(expr_type expr)
+{
+
+	switch(expr)
+	{
+	case TKN_PLUS: case TKN_MINUS: case TKN_BIGGER: case TKN_SMALLER: case TKN_EQUAL: case TKN_NEQUAL: case TKN_OR: case TKN_AND: case TKN_ASTERISK: case TKN_FORSLASH: case TKN_PERCENT: case TKN_EXCL:
+		return true;
+	default:
+		return false;
+	}
+
+}
+
+bool is_binop_expr(expr_type expr)
+{
+
+	switch(expr)
+	{
+	case EXPR_BIGGER: case EXPR_SMALLER: case EXPR_EQUAL: case EXPR_NEQUAL: case EXPR_OR: case EXPR_AND: case EXPR_ADD: case EXPR_SUB: case EXPR_MULT: case EXPR_DIV: case EXPR_MOD:
+		return true;
+	default:
+		return false;
+	}
+
+}
+
+int binop_expr_to_prec(expr_type expr)
+{
+
+	switch(expr)
+	{
+
+	case EXPR_OR: case EXPR_AND:
+		return 0;
+	case EXPR_BIGGER: case EXPR_SMALLER: case EXPR_EQUAL: case EXPR_NEQUAL:
+		return 1;
+	case EXPR_ADD: case EXPR_SUB:
+		return 2;
+	case EXPR_MULT: case EXPR_DIV: case EXPR_MOD:
+		return 3;
+	default:
+		fprintf(stderr, "unknown binop expr %d, aborting\n", expr);
+		exit(1);
+
+	}
+
+}
+
 expr_node *parser_parse_binop(expr_node *node)
 {
 
 	switch (parser_peek().type)
 	{
 
-	case TKN_PLUS: case TKN_MINUS: case TKN_BIGGER: case TKN_SMALLER: case TKN_EQUAL: case TKN_NEQUAL: case TKN_OR: case TKN_AND:
+	case TKN_PLUS: case TKN_MINUS: case TKN_BIGGER: case TKN_SMALLER: case TKN_EQUAL: case TKN_NEQUAL: case TKN_OR: case TKN_AND: case TKN_ASTERISK: case TKN_FORSLASH: case TKN_PERCENT:
 
 		expr_binop *binop_node = (expr_binop *)malloc(sizeof(expr_binop));
 
@@ -204,9 +252,9 @@ expr_node *parser_parse_binop(expr_node *node)
 
 		parser_consume(); // consume operation token
 
-		binop_node->rhs = parser_parse_expr(0);
+		binop_node->rhs = parser_parse_expr((expr_node *)binop_node);
 
-		return (expr_node *)binop_node;
+		return parser_parse_binop((expr_node *)binop_node);
 
 	case TKN_EXCL:
 
@@ -221,26 +269,7 @@ expr_node *parser_parse_binop(expr_node *node)
 
 		return (expr_node *)binop_node;
 
-	case TKN_ASTERISK: case TKN_FORSLASH: case TKN_PERCENT:
-
-		expr_binop *binop_node_inner = (expr_binop *)malloc(sizeof(expr_binop));
-
-		binop_node_inner->type = binop_tok_to_expr(parser_peek().type);
-		binop_node_inner->lhs = node;
-
-		parser_consume(); // consume operation token
-
-		binop_node_inner->rhs = parser_parse_expr((expr_node *)binop_node_inner);
-
-		return parser_parse_binop((expr_node *)binop_node_inner);
-
-	case TKN_CLOSEPAREN:
-
-		parser_consume();
-
-		return node;
-
-	case TKN_SEMICOL: case TKN_OPENBRACK: case TKN_COMMA:
+	case TKN_SEMICOL: case TKN_OPENBRACK: case TKN_COMMA: case TKN_CLOSEPAREN:
 
 		return node;
 
@@ -355,12 +384,14 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume();
 
-			parser_peek_expect(TKN_OPENPAREN);
+			parser_consume_expect(TKN_OPENPAREN);
 
 			expr_branch *branch_node = (expr_branch *)malloc(sizeof(expr_branch));
 
 			branch_node->type = EXPR_BRANCH;
 			branch_node->condition = parser_parse_expr(0);
+
+			parser_consume_expect(TKN_CLOSEPAREN);
 
 			parser_consume_expect(TKN_OPENBRACK);
 
@@ -513,6 +544,8 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 				}
 
+				parser_consume_expect(TKN_CLOSEPAREN);
+
 				if (parent && parent->type == EXPR_SCOPE)
 				{
 					parser_consume_expect(TKN_SEMICOL);
@@ -530,7 +563,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 				var_node->type = EXPR_VAR;
 				var_node->name = strdup(var_name);
 
-				if (parent && (parent->type == EXPR_MULT || parent->type == EXPR_DIV || parent->type == EXPR_MOD))
+				if (parent && is_binop_expr(parent->type) && is_binop_tok(parser_peek().type) && binop_expr_to_prec(parent->type) > binop_expr_to_prec(binop_tok_to_expr(parser_peek().type)))
 					return (expr_node *)var_node;
 
 				return parser_parse_binop((expr_node *)var_node);
@@ -543,7 +576,11 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume();
 
-			return parser_parse_binop(parser_parse_expr(0));
+			expr_node *expr =  parser_parse_expr(0);
+
+			parser_consume_expect(TKN_CLOSEPAREN);
+
+			return expr;
 
 		case TKN_COMMA:
 
@@ -564,7 +601,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 			const_node->type = EXPR_CONST;
 			const_node->value = atoi(const_tkn.value);
 
-			if (parent && (parent->type == EXPR_MULT || parent->type == EXPR_DIV || parent->type == EXPR_MOD))
+			if (parent && is_binop_expr(parent->type) && is_binop_tok(parser_peek().type) && binop_expr_to_prec(parent->type) > binop_expr_to_prec(binop_tok_to_expr(parser_peek().type)))
 				return (expr_node *)const_node;
 
 			return parser_parse_binop((expr_node *)const_node);
