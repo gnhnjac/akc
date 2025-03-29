@@ -112,7 +112,7 @@ void parser_peek_expect(tkn_type type)
 	if (parser_peek().type != type)
 	{
 
-		fprintf(stderr, "expected token %d, got %d instead", type, parser_peek().type);
+		fprintf(stderr, "expected token %d, got %d instead\n", type, parser_peek().type);
 		exit(1);
 
 	}
@@ -582,11 +582,11 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			return expr;
 
-		case TKN_COMMA:
+		// case TKN_COMMA:
 
-			parser_consume();
+		// 	parser_consume();
 
-			break;
+		// 	break;
 
 		case TKN_EXCL:
 

@@ -81,37 +81,37 @@ vector lex_tokenize()
 
 			tkn_type type = TKN_IDENTIFIER;
 
-			if (strncmp(&text[start_idx], "exit", str_size) == 0)
+			if (str_size == 4 && strncmp(&text[start_idx], "exit", str_size) == 0)
 			{
 
 				type = TKN_EXIT;
 
 			}
-			else if (strncmp(&text[start_idx], "var", str_size) == 0)
+			else if (str_size == 3 && strncmp(&text[start_idx], "var", str_size) == 0)
 			{
 
 				type = TKN_VAR;
 
 			}
-			else if (strncmp(&text[start_idx], "if", str_size) == 0)
+			else if (str_size == 2 && strncmp(&text[start_idx], "if", str_size) == 0)
 			{
-
+				
 				type = TKN_IF;
 
 			}
-			else if (strncmp(&text[start_idx], "else", str_size) == 0)
+			else if (str_size == 4 && strncmp(&text[start_idx], "else", str_size) == 0)
 			{
 
 				type = TKN_ELSE;
 
 			}
-			else if (strncmp(&text[start_idx], "func", str_size) == 0)
+			else if (str_size == 4 && strncmp(&text[start_idx], "func", str_size) == 0)
 			{
 
 				type = TKN_FUNC;
 
 			}
-			else if (strncmp(&text[start_idx], "return", str_size) == 0)
+			else if (str_size == 6 && strncmp(&text[start_idx], "return", str_size) == 0)
 			{
 
 				type = TKN_RET;

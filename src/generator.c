@@ -526,7 +526,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
-		add_to_code("pop rbx\npop rax\nmul rbx\npush rax\n");
+		add_to_code("xor rdx, rdx\npop rbx\npop rax\nmul rbx\npush rax\n");
 
 		rsp_off--; // pop, pop, push
 
@@ -537,7 +537,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
-		add_to_code("pop rbx\npop rax\ndiv rbx\npush rax\n");
+		add_to_code("xor rdx, rdx\npop rbx\npop rax\ndiv rbx\npush rax\n");
 
 		rsp_off--; // pop, pop, push
 
@@ -548,7 +548,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->lhs);
 		gen_assemble(scope, (expr_node *)((expr_binop *)node)->rhs);
 
-		add_to_code("pop rbx\npop rax\ndiv rbx\npush rdx\n");
+		add_to_code("xor rdx, rdx\npop rbx\npop rax\ndiv rbx\npush rdx\n");
 
 		rsp_off--; // pop, pop, push
 
