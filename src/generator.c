@@ -12,6 +12,10 @@ size_t assembly_code_len = 0;
 
 size_t clause_counter = 0;
 
+vector functions;
+
+function cur_func;
+
 int rsp_off = 0;
 
 void gen_init()
@@ -24,6 +28,8 @@ void gen_init()
 	strcpy(assembly_code, "global _start\n\nsection .text\n_start:\ncall main\n");
 
 	add_to_code("mov rdi, 0\nmov rax, 60\nsyscall\n"); // exit
+
+	vect_init(&functions, sizeof(function));
 
 }
 
@@ -145,15 +151,79 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 	switch(node->type)
 	{
 
+	case EXPR_RET:
+
+		gen_assemble(scope, ((expr_ret *)node)->value);
+		add_to_code_fmt("pop rax\nmov rsp, rbp\npop rbp\nret %d\n", cur_func.num_params * 8);
+
+		break;
+
+	case EXPR_CALL:
+
+		int found = 0;
+
+		for (int i = 0; i < functions.idx; i++)
+		{
+			if (!strcmp(((function *)functions.data)[i].name, ((expr_call *)node)->name))
+			{
+
+				if (((expr_call *)node)->params.idx != ((function *)functions.data)[i].num_params)
+				{
+
+					fprintf(stderr, "expected %ld parameters, instead got %ld, aborting", ((function *)functions.data)[i].num_params, ((expr_call *)node)->params.idx);
+					exit(1);
+
+				}
+
+				found = 1;
+
+			}
+
+		}
+
+		if (!found)
+		{
+
+			fprintf(stderr, "function %s not defined, aborting\n", ((expr_call *)node)->name);
+			exit(1);
+
+		}
+
+		vector params = ((expr_call *)node)->params;
+
+		for (int i = params.idx - 1; i >=0; i--)
+		{
+
+			gen_assemble(scope, ((expr_node **)params.data)[i]);
+
+		}
+
+		add_to_code_fmt("call %s\n",((expr_call *)node)->name);
+
+		if (((expr_call *)node)->use_return)
+			add_to_code("push rax\n");
+
+		break;
+
+
 	case EXPR_FUNC:
+
+		function f;
+
+		f.name = ((expr_func *)node)->name; // already malloced
+		f.num_params = ((expr_func *)node)->num_params;
+
+		vect_insert(&functions, &f);
 
 		add_to_code_fmt("%s:\npush rbp\nmov rbp, rsp\n", ((expr_func *)node)->name);
 
 		rsp_off = 0;
 
+		cur_func = f;
+
 		gen_assemble(scope, (expr_node *)((expr_func *)node)->body);
 
-		add_to_code("mov rsp, rbp\npop rbp\nret\n");
+		add_to_code_fmt("mov rsp, rbp\npop rbp\nret %d\n", f.num_params * 8);
 
 		break;
 
@@ -241,7 +311,12 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 				gen_assemble(scope, ((expr_assign *)node)->value);
 
 				if(v.rbp_off)
-					add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+				{
+					if (v.rbp_off > 0)
+						add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+					else
+						add_to_code_fmt("pop QWORD [rbp+%d]\n", -v.rbp_off);
+				}
 				else
 					add_to_code_fmt("pop QWORD [%s]\n", v.name);
 
@@ -277,7 +352,12 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		gen_assemble(scope, ((expr_assign *)node)->value);
 
 		if(v.rbp_off)
-			add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+		{
+			if (v.rbp_off > 0)
+				add_to_code_fmt("pop QWORD [rbp-%d]\n", v.rbp_off);
+			else
+				add_to_code_fmt("pop QWORD [rbp+%d]\n", -v.rbp_off);
+		}
 		else
 			add_to_code_fmt("pop QWORD [%s]\n", v.name);
 
@@ -306,7 +386,12 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		}
 
 		if(v.rbp_off)
-			add_to_code_fmt("push QWORD [rbp-%d]\n", v.rbp_off);
+		{
+			if (v.rbp_off > 0)
+				add_to_code_fmt("push QWORD [rbp-%d]\n", v.rbp_off);
+			else
+				add_to_code_fmt("push QWORD [rbp+%d]\n", -v.rbp_off);
+		}
 		else
 			add_to_code_fmt("push QWORD [%s]\n", v.name);
 

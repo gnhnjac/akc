@@ -111,6 +111,12 @@ vector lex_tokenize()
 				type = TKN_FUNC;
 
 			}
+			else if (strncmp(&text[start_idx], "return", str_size) == 0)
+			{
+
+				type = TKN_RET;
+
+			}
 
 			if (type == TKN_IDENTIFIER)
 				add_token(type, &text[start_idx], str_size);

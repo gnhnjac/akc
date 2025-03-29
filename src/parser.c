@@ -78,6 +78,19 @@ static inline void parser_expect_global(expr_node *parent)
 
 }
 
+static inline void parser_expect_global_exclusive(expr_node *parent)
+{
+
+	if (parent->type != EXPR_GLOBAL)
+	{
+
+		fprintf(stderr, "expected scope or global as parent, instead got %d, aborting\n", parent->type);
+		exit(1);
+
+	}
+
+}
+
 void parser_init(token *tkns, size_t token_count)
 {
 
@@ -227,7 +240,7 @@ expr_node *parser_parse_binop(expr_node *node)
 
 		return node;
 
-	case TKN_SEMICOL: case TKN_OPENBRACK:
+	case TKN_SEMICOL: case TKN_OPENBRACK: case TKN_COMMA:
 
 		return node;
 
@@ -251,25 +264,38 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 		case TKN_CLOSEBRACK:
 
+			return 0;
+
+		case TKN_RET:
+
+			parser_expect_scope(parent);
+
 			parser_consume();
 
-			return parent;
+			expr_ret *ret_node = (expr_ret *)malloc(sizeof(expr_ret));
+
+			ret_node->type = EXPR_RET;
+			ret_node->value = parser_parse_expr(0);
+
+			parser_consume_expect(TKN_SEMICOL);
+
+			vect_insert(&((expr_scope *)parent)->body, &ret_node);
+
+			break;
 
 		case TKN_FUNC:
 			
-			parser_consume();
-
-			parser_peek_expect(TKN_IDENTIFIER);
+			parser_expect_global_exclusive(parent);
 
 			expr_func *func_node = (expr_func *)malloc(sizeof(expr_func));
 
 			func_node->type = EXPR_FUNC;
+
+			parser_consume();
+
+			parser_peek_expect(TKN_IDENTIFIER);
+
 			func_node->name = strdup(parser_consume().value);
-
-			parser_consume_expect(TKN_OPENPAREN);
-			parser_consume_expect(TKN_CLOSEPAREN);
-
-			parser_consume_expect(TKN_OPENBRACK);
 
 			expr_scope *func_body = (expr_scope *)malloc(sizeof(expr_scope));
 
@@ -280,7 +306,42 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			func_body->parent = (expr_scope *)parent;
 
+			parser_consume_expect(TKN_OPENPAREN);
+
+			int rbp_off = -16;
+			int num_params = 0;
+
+			while(parser_peek().type == TKN_IDENTIFIER)
+			{
+
+				variable v;
+
+				v.name = strdup(parser_consume().value);
+
+				v.rbp_off = rbp_off;
+
+				vect_insert(&func_body->variables,&v);
+
+				rbp_off -= 8;
+
+				num_params++;
+
+				if (parser_peek().type == TKN_COMMA)
+					parser_consume();
+				else
+					break;
+
+			}
+
+			func_node->num_params = num_params;
+
+			parser_consume_expect(TKN_CLOSEPAREN);
+
+			parser_consume_expect(TKN_OPENBRACK);
+
 			parser_parse_expr((expr_node *)func_body);
+
+			parser_consume_expect(TKN_CLOSEBRACK);
 
 			func_node->body = func_body;
 
@@ -314,6 +375,8 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_parse_expr((expr_node *)branch_body);
 
+			parser_consume_expect(TKN_CLOSEBRACK);
+
 			branch_node->if_body = branch_body;
 
 			parser_consume_expect(TKN_ELSE);
@@ -330,6 +393,8 @@ expr_node *parser_parse_expr(expr_node *parent)
 			branch_else->parent = (expr_scope *)parent;
 
 			parser_parse_expr((expr_node *)branch_else);
+
+			parser_consume_expect(TKN_CLOSEBRACK);
 
 			branch_node->else_body = branch_else;
 
@@ -414,6 +479,49 @@ expr_node *parser_parse_expr(expr_node *parent)
 				parser_consume_expect(TKN_SEMICOL);
 
 			}
+			else if(parser_peek().type == TKN_OPENPAREN)
+			{
+
+				parser_consume();
+
+				expr_call *call_node = (expr_call *)malloc(sizeof(expr_call));
+
+				call_node->type = EXPR_CALL;
+				call_node->name = strdup(var_name);
+				call_node->use_return = (parent && parent->type == EXPR_SCOPE) ? false : true;
+				vect_init(&call_node->params, sizeof(expr_node *));
+
+				expr_node *param = parser_parse_expr(0);
+
+				while(param)
+				{
+
+					if (parser_peek().type == TKN_COMMA)
+						parser_consume();
+					else
+					{
+
+						if (param)
+							vect_insert(&call_node->params, &param);
+
+						break;
+					}
+
+					vect_insert(&call_node->params, &param);
+
+					param = parser_parse_expr(0);
+
+				}
+
+				if (parent && parent->type == EXPR_SCOPE)
+				{
+					parser_consume_expect(TKN_SEMICOL);
+					vect_insert(&((expr_scope *)parent)->body, &call_node);
+				}
+				else
+					return parser_parse_binop((expr_node *)call_node);
+
+			}
 			else
 			{
 
@@ -436,6 +544,12 @@ expr_node *parser_parse_expr(expr_node *parent)
 			parser_consume();
 
 			return parser_parse_binop(parser_parse_expr(0));
+
+		case TKN_COMMA:
+
+			parser_consume();
+
+			break;
 
 		case TKN_EXCL:
 

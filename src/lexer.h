@@ -22,6 +22,7 @@ typedef enum
 	TKN_SEMICOL,
 	TKN_COMMA,
 	TKN_FUNC,
+	TKN_RET,
 	TKN_PIPE,
 	TKN_AMPR,
 	TKN_EQUAL,
