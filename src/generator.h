@@ -13,6 +13,6 @@ typedef enum
 
 void gen_init();
 void add_to_code(char *text);
-//void gen_assemble_op(expr_node *node, char *dst, size_t sz, op_type op);
+void gen_finalize();
 char *gen_generate_assembly(expr_scope *global_node);
 void gen_assemble(expr_scope *scope, expr_node *node);

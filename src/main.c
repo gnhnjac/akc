@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 
    expr_scope *global_node = parser_gen_ast();
 
-   //lex_finalize();
+   lex_finalize();
 
    gen_init();
 
@@ -35,9 +35,10 @@ int main(int argc, char *argv[]) {
 
    fclose(fptr);
 
-   //parser_finalize();
+   parser_finalize();
+   gen_finalize();
 
-   //vect_destroy();
+   vect_destroy();
 
    system("nasm -felf64 out.asm");
    system("ld -o out out.o");

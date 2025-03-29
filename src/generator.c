@@ -36,6 +36,13 @@ void gen_init()
 
 }
 
+void gen_finalize()
+{
+
+	arena_destroy(&gen_arena);
+
+}
+
 void add_to_code(char *text)
 {
 
@@ -90,11 +97,6 @@ void gen_assemble_global_data(expr_scope *scope)
 		add_to_code(": dq 0\n");
 
 	}
-
-}
-
-void gen_exit_scope(expr_scope *scope)
-{
 
 }
 
