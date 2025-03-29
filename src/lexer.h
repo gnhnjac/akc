@@ -42,6 +42,8 @@ typedef struct
 
 	tkn_type type;
 	char *value;
+	size_t line;
+	size_t col;
 
 } token;
 

@@ -6,8 +6,10 @@
 #include "vector.h"
 #include "allocator.h"
 
-int text_idx;
+size_t text_idx;
 char *text;
+size_t line = 1;
+size_t col = 0;
 
 static arena lex_arena;
 
@@ -29,6 +31,8 @@ static inline char lex_peek_ahead(int ahead)
 
 static inline char lex_consume()
 {
+
+	col++;
 
 	return text[text_idx++];
 
@@ -151,7 +155,15 @@ vector lex_tokenize()
 		}
 		else if(isspace(c))
 		{
+
 			lex_consume();
+
+			if (c == '\n')
+			{
+				line++;
+				col = 0;
+			}
+
 		}
 		else
 		{
@@ -270,6 +282,9 @@ void add_token(tkn_type type, char *val, size_t val_len)
 		v.value[val_len] = 0;
 
 	}
+
+	v.line = line;
+	v.col = col;
 
 	vect_insert(&tokens, &v);
 

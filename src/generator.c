@@ -78,14 +78,6 @@ void add_to_code_fmt(char *fmt, ...)
 void gen_assemble_global_data(expr_scope *scope)
 {
 
-	if (scope->type != EXPR_GLOBAL)
-	{
-
-		fprintf(stderr, "expected global scope expression, got %d instead\n",scope->type);
-		exit(1);
-
-	}
-
 	variable *variables = (variable *)scope->variables.data;
 
 	add_to_code("section .data\n");

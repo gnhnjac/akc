@@ -16,6 +16,11 @@ static token *tokens;
 
 size_t tkn_count;
 
+extern char *text;
+
+char *tok_to_str[] = { 0, "EXIT", "IDENT", "CONST", "(", ")", "{", "}", "=", "!", "+", "-", "*", "/", "%", ";", \
+					 ",", "FUNC", "RET", "|", "&", "==", "!=", ">", "<", "||", "&&", "VAR", "IF", "ELSE" };
+
 static inline token parser_peek()
 {
 
@@ -118,13 +123,59 @@ void parser_finalize()
 
 }
 
+void print_line_error(size_t line, size_t col)
+{
+
+	size_t cur_line = 1;
+	size_t cur_text_idx = 0;
+
+	while(cur_line < line)
+	{
+		if (text[cur_text_idx++] == '\n')
+			cur_line++;
+	}
+
+	size_t cur_col = 0;
+
+	while(text[cur_text_idx + cur_col] != '\n')
+	{
+		if (cur_col == col)
+			fprintf(stderr, "\033[31m%c\033[0m", text[cur_text_idx + cur_col]);
+		else
+			fprintf(stderr, "%c", text[cur_text_idx + cur_col]);
+		cur_col++;
+	}
+
+	fprintf(stderr, "\n");
+
+	cur_col = 0;
+
+	while(cur_col < col)
+	{
+
+		if (text[cur_text_idx + cur_col] == '\t')
+			fprintf(stderr, "\t");
+		else
+			fprintf(stderr, " ");
+
+		cur_col++;
+
+	}
+
+	fprintf(stderr, "^\n");
+
+}
+
 void parser_peek_expect(tkn_type type)
 {
 
 	if (parser_peek().type != type)
 	{
 
-		fprintf(stderr, "expected token %d, got %d instead\n", type, parser_peek().type);
+		fprintf(stderr, "in line %ld, col %ld:\nexpected token '%s', got '%s' instead\n", parser_peek().line, parser_peek().col, tok_to_str[type], tok_to_str[parser_peek().type]);
+		
+		print_line_error(parser_peek().line, parser_peek().col);
+
 		exit(1);
 
 	}
@@ -180,7 +231,7 @@ expr_type binop_tok_to_expr(tkn_type tok)
 	case TKN_AND:
 		return EXPR_AND;
 	default:
-		fprintf(stderr, "unknown binop token %d, aborting\n", tok);
+		fprintf(stderr, "unknown binop token %s, aborting\n", tok_to_str[tok]);
 		exit(1);
 
 	}
@@ -273,7 +324,10 @@ expr_node *parser_parse_binop(expr_node *node)
 
 	default:
 
-		fprintf(stderr, "expected token ';' or ')' or a binop, instead got %d, aborting\n", parser_peek().type);
+		fprintf(stderr, "in line %ld, col %ld:\nexpected token ';' or ')' or a binop, instead got '%s', aborting\n", parser_peek().line, parser_peek().col, tok_to_str[parser_peek().type]);
+		
+		print_line_error(parser_peek().line, parser_peek().col);
+
 		exit(1);
 
 	}
@@ -606,7 +660,10 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 		default:
 
-			fprintf(stderr, "unknown token %d, aborting\n", parser_peek().type);
+			fprintf(stderr, "in line %ld, col %ld:\nunexpected token '%s', aborting\n", parser_peek().line, parser_peek().col, tok_to_str[parser_peek().type]);
+
+			print_line_error(parser_peek().line, parser_peek().col);
+
 			exit(1);
 
 		}
