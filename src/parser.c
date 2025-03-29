@@ -4,10 +4,13 @@
 #include <ctype.h>
 #include "lexer.h"
 #include "parser.h"
+#include "allocator.h"
 
 expr_scope glob_node;
 
 int tkn_idx;
+
+static arena parser_arena;
 
 static token *tokens;
 
@@ -94,6 +97,8 @@ static inline void parser_expect_global_exclusive(expr_node *parent)
 void parser_init(token *tkns, size_t token_count)
 {
 
+	parser_arena = arena_create();
+
 	tkn_idx = 0;
 
 	glob_node.type = EXPR_GLOBAL;
@@ -103,6 +108,13 @@ void parser_init(token *tkns, size_t token_count)
 
 	tokens = tkns;
 	tkn_count = token_count;
+
+}
+
+void parser_finalize()
+{
+
+	arena_destroy(&parser_arena);
 
 }
 
@@ -132,20 +144,6 @@ expr_scope *parser_gen_ast()
 {
 
 	parser_parse_expr((expr_node *)&glob_node);
-
-	tkn_idx = 0;
-
-	while (tokens[tkn_idx].type)
-	{
-
-		if (tokens[tkn_idx].value)
-			free(tokens[tkn_idx].value);
-
-		tkn_idx++;
-
-	}
-
-	free(tokens);
 
 	return &glob_node;
 
@@ -245,7 +243,7 @@ expr_node *parser_parse_binop(expr_node *node)
 
 	case TKN_PLUS: case TKN_MINUS: case TKN_BIGGER: case TKN_SMALLER: case TKN_EQUAL: case TKN_NEQUAL: case TKN_OR: case TKN_AND: case TKN_ASTERISK: case TKN_FORSLASH: case TKN_PERCENT:
 
-		expr_binop *binop_node = (expr_binop *)malloc(sizeof(expr_binop));
+		expr_binop *binop_node = (expr_binop *)arena_alloc(&parser_arena, sizeof(expr_binop));
 
 		binop_node->type = binop_tok_to_expr(parser_peek().type);
 		binop_node->lhs = node;
@@ -258,7 +256,7 @@ expr_node *parser_parse_binop(expr_node *node)
 
 	case TKN_EXCL:
 
-		binop_node = (expr_binop *)malloc(sizeof(expr_binop));
+		binop_node = (expr_binop *)arena_alloc(&parser_arena, sizeof(expr_binop));
 
 		binop_node->type = binop_tok_to_expr(parser_peek().type);
 
@@ -301,7 +299,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume();
 
-			expr_ret *ret_node = (expr_ret *)malloc(sizeof(expr_ret));
+			expr_ret *ret_node = (expr_ret *)arena_alloc(&parser_arena, sizeof(expr_ret));
 
 			ret_node->type = EXPR_RET;
 			ret_node->value = parser_parse_expr(0);
@@ -316,7 +314,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 			
 			parser_expect_global_exclusive(parent);
 
-			expr_func *func_node = (expr_func *)malloc(sizeof(expr_func));
+			expr_func *func_node = (expr_func *)arena_alloc(&parser_arena, sizeof(expr_func));
 
 			func_node->type = EXPR_FUNC;
 
@@ -324,9 +322,9 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_peek_expect(TKN_IDENTIFIER);
 
-			func_node->name = strdup(parser_consume().value);
+			func_node->name = arena_strdup(&parser_arena, parser_consume().value);
 
-			expr_scope *func_body = (expr_scope *)malloc(sizeof(expr_scope));
+			expr_scope *func_body = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
 
 			func_body->type = EXPR_SCOPE;
 			
@@ -345,7 +343,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 				variable v;
 
-				v.name = strdup(parser_consume().value);
+				v.name = arena_strdup(&parser_arena, parser_consume().value);
 
 				v.rbp_off = rbp_off;
 
@@ -386,7 +384,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume_expect(TKN_OPENPAREN);
 
-			expr_branch *branch_node = (expr_branch *)malloc(sizeof(expr_branch));
+			expr_branch *branch_node = (expr_branch *)arena_alloc(&parser_arena, sizeof(expr_branch));
 
 			branch_node->type = EXPR_BRANCH;
 			branch_node->condition = parser_parse_expr(0);
@@ -395,7 +393,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume_expect(TKN_OPENBRACK);
 
-			expr_scope *branch_body = (expr_scope *)malloc(sizeof(expr_scope));
+			expr_scope *branch_body = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
 
 			branch_body->type = EXPR_SCOPE;
 			
@@ -414,7 +412,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume_expect(TKN_OPENBRACK);
 
-			expr_scope *branch_else = (expr_scope *)malloc(sizeof(expr_scope));
+			expr_scope *branch_else = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
 
 			branch_else->type = EXPR_SCOPE;
 			
@@ -439,7 +437,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			parser_consume();
 
-			expr_exit *exit_node = (expr_exit *)malloc(sizeof(expr_exit));
+			expr_exit *exit_node = (expr_exit *)arena_alloc(&parser_arena, sizeof(expr_exit));
 
 			exit_node->type = EXPR_EXIT;
 			exit_node->exit_code = parser_parse_expr(0);
@@ -460,10 +458,10 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			char *var_name = parser_consume().value;
 
-			expr_decl *decl_node = (expr_decl *)malloc(sizeof(expr_decl));
+			expr_decl *decl_node = (expr_decl *)arena_alloc(&parser_arena, sizeof(expr_decl));
 
 			decl_node->type = EXPR_DECL;
-			decl_node->name = strdup(var_name);
+			decl_node->name = arena_strdup(&parser_arena, var_name);
 
 			if(parser_peek().type == TKN_SEMICOL)
 			{
@@ -497,10 +495,10 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 				parser_consume(); // consume equals sign
 
-				expr_assign *assign_node = (expr_assign *)malloc(sizeof(expr_assign));
+				expr_assign *assign_node = (expr_assign *)arena_alloc(&parser_arena, sizeof(expr_assign));
 
 				assign_node->type = EXPR_ASSIGN;
-				assign_node->name = strdup(var_name);
+				assign_node->name = arena_strdup(&parser_arena, var_name);
 				assign_node->value = parser_parse_expr(0);
 
 				parser_expect_scope(parent);
@@ -515,10 +513,10 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 				parser_consume();
 
-				expr_call *call_node = (expr_call *)malloc(sizeof(expr_call));
+				expr_call *call_node = (expr_call *)arena_alloc(&parser_arena, sizeof(expr_call));
 
 				call_node->type = EXPR_CALL;
-				call_node->name = strdup(var_name);
+				call_node->name = arena_strdup(&parser_arena, var_name);
 				call_node->use_return = (parent && parent->type == EXPR_SCOPE) ? false : true;
 				vect_init(&call_node->params, sizeof(expr_node *));
 
@@ -558,10 +556,10 @@ expr_node *parser_parse_expr(expr_node *parent)
 			else
 			{
 
-				expr_var *var_node = (expr_var *)malloc(sizeof(expr_var));
+				expr_var *var_node = (expr_var *)arena_alloc(&parser_arena, sizeof(expr_var));
 
 				var_node->type = EXPR_VAR;
-				var_node->name = strdup(var_name);
+				var_node->name = arena_strdup(&parser_arena, var_name);
 
 				if (parent && is_binop_expr(parent->type) && is_binop_tok(parser_peek().type) && binop_expr_to_prec(parent->type) > binop_expr_to_prec(binop_tok_to_expr(parser_peek().type)))
 					return (expr_node *)var_node;
@@ -596,7 +594,7 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			token const_tkn = parser_consume();
 
-			expr_const *const_node = (expr_const *)malloc(sizeof(expr_const));
+			expr_const *const_node = (expr_const *)arena_alloc(&parser_arena, sizeof(expr_const));
 
 			const_node->type = EXPR_CONST;
 			const_node->value = atoi(const_tkn.value);

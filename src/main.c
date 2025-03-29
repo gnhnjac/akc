@@ -13,6 +13,8 @@ int main(int argc, char *argv[]) {
       return 1;
    }
 
+   vect_init_arena();
+
    lex_init(argv[1]);
 
    vector tokens_vector = lex_tokenize();
@@ -23,6 +25,8 @@ int main(int argc, char *argv[]) {
 
    expr_scope *global_node = parser_gen_ast();
 
+   //lex_finalize();
+
    gen_init();
 
    FILE *fptr = fopen("out.asm", "w");
@@ -30,6 +34,10 @@ int main(int argc, char *argv[]) {
    fprintf(fptr, "%s", gen_generate_assembly(global_node));
 
    fclose(fptr);
+
+   //parser_finalize();
+
+   //vect_destroy();
 
    system("nasm -felf64 out.asm");
    system("ld -o out out.o");

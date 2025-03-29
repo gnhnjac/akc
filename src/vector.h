@@ -11,5 +11,7 @@ typedef struct
 
 } vector;
 
+void vect_init_arena();
 void vect_init(vector *v, size_t data_size);
 void vect_insert(vector *v, void *data);
+void vect_destroy();

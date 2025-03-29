@@ -4,9 +4,12 @@
 #include <ctype.h>
 #include "lexer.h"
 #include "vector.h"
+#include "allocator.h"
 
 int text_idx;
 char *text;
+
+static arena lex_arena;
 
 static vector tokens;
 
@@ -34,6 +37,8 @@ static inline char lex_consume()
 void lex_init(char *fname)
 {
 
+	lex_arena = arena_create();
+
 	text_idx = 0;
 
 	FILE *fptr = fopen(fname, "r");
@@ -50,7 +55,7 @@ void lex_init(char *fname)
 	rewind(fptr);
 
 	// read file text into buffer
-	text = (char *)malloc(sizeof(char) * fsize + 1);
+	text = (char *)arena_alloc(&lex_arena, sizeof(char) * fsize + 1);
 	fread(text, fsize, 1, fptr);
 
 	fclose(fptr);
@@ -58,6 +63,13 @@ void lex_init(char *fname)
 	text[fsize] = 0;
 
 	vect_init(&tokens, sizeof(token));
+
+}
+
+void lex_finalize()
+{
+
+	arena_destroy(&lex_arena);
 
 }
 
@@ -234,8 +246,6 @@ vector lex_tokenize()
 
 	}
 
-	free(text);
-
 	token v = { 0 };
 
 	vect_insert(&tokens, &v);
@@ -254,7 +264,7 @@ void add_token(tkn_type type, char *val, size_t val_len)
 	if (val)
 	{
 
-		v.value = (char *)malloc(sizeof(char) * val_len + 1);
+		v.value = (char *)arena_alloc(&lex_arena, sizeof(char) * val_len + 1);
 		memcpy(v.value, val, val_len);
 
 		v.value[val_len] = 0;

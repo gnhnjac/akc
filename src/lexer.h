@@ -47,4 +47,5 @@ typedef struct
 
 void lex_init(char *fname);
 vector lex_tokenize();
+void lex_finalize();
 void add_token(tkn_type type, char *val, size_t val_len);

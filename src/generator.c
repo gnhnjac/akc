@@ -5,6 +5,7 @@
 #include "generator.h"
 #include "vector.h"
 #include "parser.h"
+#include "allocator.h"
 
 char *assembly_code;
 
@@ -18,16 +19,18 @@ function cur_func;
 
 int rsp_off = 0;
 
+static arena gen_arena;
+
 void gen_init()
 {
 
-	assembly_code_len = strlen("global _start\n\nsection .text\n_start:\ncall main\n");
+	gen_arena = arena_create();
 
-	assembly_code = (char *)malloc(assembly_code_len + 1);
+	assembly_code_len = strlen("global _start\n\nsection .text\n_start:\ncall main\nmov rdi, 0\nmov rax, 60\nsyscall\n");
 
-	strcpy(assembly_code, "global _start\n\nsection .text\n_start:\ncall main\n");
+	assembly_code = (char *)arena_alloc(&gen_arena, assembly_code_len + 1);
 
-	add_to_code("mov rdi, 0\nmov rax, 60\nsyscall\n"); // exit
+	strcpy(assembly_code, "global _start\n\nsection .text\n_start:\ncall main\nmov rdi, 0\nmov rax, 60\nsyscall\n");
 
 	vect_init(&functions, sizeof(function));
 
@@ -40,7 +43,7 @@ void add_to_code(char *text)
 
 	assembly_code_len += strlen(text);
 
-	assembly_code = realloc(assembly_code, assembly_code_len + 1);
+	assembly_code = arena_realloc(&gen_arena, assembly_code, assembly_code_len + 1);
 
 	strcat(assembly_code,text);
 

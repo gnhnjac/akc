@@ -176,6 +176,7 @@ typedef struct
 
 } expr_ret;
 
+void parser_finalize();
 void parser_init(token *tkns, size_t token_count);
 expr_scope *parser_gen_ast();
 expr_node *parser_parse_expr(expr_node *parent);
