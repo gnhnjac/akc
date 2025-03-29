@@ -462,24 +462,29 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 			branch_node->if_body = branch_body;
 
-			parser_consume_expect(TKN_ELSE);
+			if (parser_peek().type == TKN_ELSE)
+			{
+				parser_consume();
 
-			parser_consume_expect(TKN_OPENBRACK);
+				parser_consume_expect(TKN_OPENBRACK);
 
-			expr_scope *branch_else = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
+				expr_scope *branch_else = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
 
-			branch_else->type = EXPR_SCOPE;
-			
-			vect_init(&branch_else->body, sizeof(expr_node *));
-			vect_init(&branch_else->variables, sizeof(variable));
+				branch_else->type = EXPR_SCOPE;
+				
+				vect_init(&branch_else->body, sizeof(expr_node *));
+				vect_init(&branch_else->variables, sizeof(variable));
 
-			branch_else->parent = (expr_scope *)parent;
+				branch_else->parent = (expr_scope *)parent;
 
-			parser_parse_expr((expr_node *)branch_else);
+				parser_parse_expr((expr_node *)branch_else);
 
-			parser_consume_expect(TKN_CLOSEBRACK);
+				parser_consume_expect(TKN_CLOSEBRACK);
 
-			branch_node->else_body = branch_else;
+				branch_node->else_body = branch_else;
+			}
+			else
+				branch_node->else_body = 0;
 
 			vect_insert(&((expr_scope *)parent)->body, &branch_node);
 

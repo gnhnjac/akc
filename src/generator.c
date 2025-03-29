@@ -240,7 +240,8 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		add_to_code_fmt("jmp _end%d\n_else%d:\n", clause_number, clause_number);
 
-		gen_assemble(scope, (expr_node *)((expr_branch *)node)->else_body);
+		if (((expr_branch *)node)->else_body)
+			gen_assemble(scope, (expr_node *)((expr_branch *)node)->else_body);
 
 		add_to_code_fmt("_end%d:\n", clause_number);
 
