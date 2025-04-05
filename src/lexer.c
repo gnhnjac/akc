@@ -134,10 +134,14 @@ vector lex_tokenize()
 
 			}
 
+			col -= str_size;
+
 			if (type == TKN_IDENTIFIER)
 				add_token(type, &text[start_idx], str_size);
 			else
 				add_token(type, 0, 0);
+
+			col += str_size;
 
 		}
 		else if(isdigit(c))

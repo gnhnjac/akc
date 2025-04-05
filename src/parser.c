@@ -18,7 +18,7 @@ size_t tkn_count;
 
 extern char *text;
 
-char *tok_to_str[] = { 0, "EXIT", "IDENT", "CONST", "(", ")", "{", "}", "=", "!", "+", "-", "*", "/", "%", ";", \
+char *tok_to_str[] = { 0, "EXIT", "IDENTIFIER", "CONST", "(", ")", "{", "}", "=", "!", "+", "-", "*", "/", "%", ";", \
 					 ",", "FUNC", "RET", "|", "&", "==", "!=", ">", "<", "||", "&&", "VAR", "IF", "ELSE" };
 
 static inline token parser_peek()
@@ -343,7 +343,34 @@ expr_node *parser_parse_expr(expr_node *parent)
 		switch (parser_peek().type)
 		{
 
+		case TKN_OPENBRACK:
+
+			parser_expect_scope(parent);
+
+			parser_consume();
+
+			expr_scope *scope_node = (expr_scope *)arena_alloc(&parser_arena, sizeof(expr_scope));
+
+			scope_node->type = EXPR_SCOPE;
+			
+			vect_init(&scope_node->body, sizeof(expr_node *));
+			vect_init(&scope_node->variables, sizeof(variable));
+
+			scope_node->parent = (expr_scope *)parent;
+
+			parser_parse_expr((expr_node *)scope_node);
+
+			parser_consume_expect(TKN_CLOSEBRACK);
+
+			vect_insert(&((expr_scope *)parent)->body, &scope_node);
+
+			break;
+
 		case TKN_CLOSEBRACK:
+
+			return 0;
+
+		case TKN_CLOSEPAREN:
 
 			return 0;
 
@@ -509,8 +536,6 @@ expr_node *parser_parse_expr(expr_node *parent)
 
 		case TKN_VAR:
 
-			parser_expect_global(parent);
-
 			parser_consume();
 
 			parser_peek_expect(TKN_IDENTIFIER);
@@ -525,6 +550,8 @@ expr_node *parser_parse_expr(expr_node *parent)
 			if(parser_peek().type == TKN_SEMICOL)
 			{
 
+				parser_expect_global(parent);
+
 				parser_consume(); // consume the semicol token
 
 				decl_node->value = 0;
@@ -532,6 +559,8 @@ expr_node *parser_parse_expr(expr_node *parent)
 			}
 			else
 			{
+
+				parser_expect_scope(parent);
 
 				parser_consume_expect(TKN_EQUALS);
 
@@ -638,12 +667,6 @@ expr_node *parser_parse_expr(expr_node *parent)
 			parser_consume_expect(TKN_CLOSEPAREN);
 
 			return expr;
-
-		// case TKN_COMMA:
-
-		// 	parser_consume();
-
-		// 	break;
 
 		case TKN_EXCL:
 

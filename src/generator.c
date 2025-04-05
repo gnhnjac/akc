@@ -173,6 +173,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 				}
 
 				found = 1;
+				break;
 
 			}
 
@@ -181,7 +182,7 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 		if (!found)
 		{
 
-			fprintf(stderr, "function %s not defined, aborting\n", ((expr_call *)node)->name);
+			fprintf(stderr, "function %s is not defined, aborting\n", ((expr_call *)node)->name);
 			exit(1);
 
 		}
@@ -209,6 +210,28 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 		f.name = ((expr_func *)node)->name; // already malloced
 		f.num_params = ((expr_func *)node)->num_params;
+
+		found = 0;
+
+		for (int i = 0; i < functions.idx; i++)
+		{
+			if (!strcmp(((function *)functions.data)[i].name, ((expr_call *)node)->name))
+			{
+
+				found = 1;
+				break;
+
+			}
+
+		}
+
+		if (found)
+		{
+
+			fprintf(stderr, "function %s is already defined, aborting\n", ((expr_func *)node)->name);
+			exit(1);
+
+		}
 
 		vect_insert(&functions, &f);
 
@@ -258,6 +281,15 @@ void gen_assemble(expr_scope *scope, expr_node *node)
 
 			gen_assemble((expr_scope *)node, items[i]);
 
+		}
+
+		size_t num_vars = ((expr_scope *)node)->variables.idx;
+
+		if (num_vars)
+		{
+			add_to_code_fmt("add rsp, %d\n", num_vars * 8);
+
+			rsp_off -= num_vars * 8;
 		}
 
 		break;
